@@ -309,7 +309,7 @@ class FederatedLearning:
 if __name__ == "__main__":
     # Initialize and run federated learning
     fl = FederatedLearning(
-        data_file="dataset_container/dataset/3class_normalized.csv",
+        data_file="dataset_container/dataset_one_ddos/dataset.csv",
         label_col="label",
         model_type="CNN_BiLSTM"  # Change to "CNN_BiLSTM" for CNN-BiLSTM model
     )

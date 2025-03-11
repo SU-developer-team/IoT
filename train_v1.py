@@ -28,9 +28,9 @@ class FederatedLearning:
         # Hyperparameters
         self.BATCH_SIZE = 32
         self.LEARNING_RATE = 0.001
-        self.EPOCHS_PER_CLIENT = 8
-        self.NUM_ROUNDS = 5
-        self.DEVICE_COUNTS = [100, 200, 300]
+        self.EPOCHS_PER_CLIENT = 20
+        self.NUM_ROUNDS = 10
+        self.DEVICE_COUNTS = [20, 200, 300]
         self.MANUAL_DATA_SIZE = 0.001
 
         # Data and model placeholders
@@ -391,7 +391,7 @@ class FederatedLearning:
 if __name__ == "__main__":
     # Пример использования
     fl = FederatedLearning(
-        data_file="dataset_container/dataset_one_ddos/dataset.csv",
+        data_file="dataset_container/2023data/dataset_balanced1.csv",
         label_col="label",
         model_type="CNN_BiLSTM"  # Или "DNN"
     )

@@ -414,60 +414,17 @@ class FederatedLearning:
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    original_csv = "dataset_container/dataset/data_normalized.csv"
-
-    # 1) Создаем "вспомогательный" объект, чтобы сгенерировать experiments/exp_N.
-    init_fl = FederatedLearning(
-        data_file="FAKE.csv",  # ничего не загрузим
-        label_col="label",
-        model_type="CNN_BiLSTM",
-        seed=42,
-        experiment_dir=None  # => авто exp_N
-    )
-    exp_dir = init_fl.experiment_dir
-    print(f"[INFO] Все результаты сохраняем в {exp_dir}")
-
-    # 2) Делаем в exp_N подпапку stage_datasets и туда пишем 3 csv
-    stage_dir = os.path.join(exp_dir, "stage_datasets")
-    os.makedirs(stage_dir, exist_ok=True)
-    s1, s2, s3 = create_stage_datasets_balanced(original_csv, output_dir=stage_dir)
-
-    # 3) Три стадии федеративного обучения (Stage1, Stage2, Stage3) в один exp_N
-
-    # --- Stage1 (2 млн строк, 1 млн normal и 1 млн attack) ---
+    original_csv = "dataset_container/testing_data/dataset_v1.csv"
+ 
+    
     fl_stage1 = FederatedLearning(
-        data_file=s1,
+        data_file=original_csv,
         label_col="label",
         model_type="CNN_BiLSTM",
         seed=42,
-        experiment_dir=exp_dir
+        experiment_dir=None
     )
     fl_stage1.load_and_preprocess_data()
     res1 = fl_stage1.federated_training(stage_name="stage1")
     fl_stage1.plot_results(res1, stage_name="stage1")
-
-    # --- Stage2 (2 млн строк, label!=0 => 1 млн "другие", 1 млн DDoS) ---
-    fl_stage2 = FederatedLearning(
-        data_file=s2,
-        label_col="label",
-        model_type="CNN_BiLSTM",
-        seed=42,
-        experiment_dir=exp_dir
-    )
-    fl_stage2.load_and_preprocess_data()
-    res2 = fl_stage2.federated_training(stage_name="stage2")
-    fl_stage2.plot_results(res2, stage_name="stage2")
-
-    # --- Stage3 (1 млн строк, classes 2..11 => 10 классов DDoS) ---
-    fl_stage3 = FederatedLearning(
-        data_file=s3,
-        label_col="label",
-        model_type="CNN_BiLSTM",
-        seed=42,
-        experiment_dir=exp_dir
-    )
-    fl_stage3.load_and_preprocess_data()
-    res3 = fl_stage3.federated_training(stage_name="stage3")
-    fl_stage3.plot_results(res3, stage_name="stage3")
-
-    print("[DONE] Проверяйте папку:", exp_dir)
+ 

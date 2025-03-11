@@ -2,8 +2,8 @@ import os
 import pandas as pd
 
 # Папка с файлами
-folder_path = "dataset_container/2023data"
-output_file = "dataset_container/2023data/dataset.csv"
+folder_path = "dataset_container/2023data/frag"
+output_file = "dataset_container/testing_data/ddos_frag.csv"
 
 # Количество строк для выборки
 rows_per_file = 250_000

@@ -2,7 +2,7 @@ import os
 import csv
 import random
 import logging
-import requests 
+import requests
 import numpy as np
 import pandas as pd
 import tkinter as tk
@@ -15,12 +15,6 @@ import matplotlib.pyplot as plt
 from tkinter import ttk, messagebox, filedialog
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-# ------------------------------------------------
-# Установка зависимостей
-# pip install requests numpy pandas matplotlib beautifulsoup4 ttkthemes 
-# ------------------------------------------------
-
 
 BASE_URL = "http://205.174.165.80/IOTDataset/CIC_IOT_Dataset2023/Dataset/CSV/CSV/"
 SAVE_DIR = "downloads"
@@ -38,12 +32,14 @@ logger.addHandler(fh)
 
 
 def get_links(url):
+    """Получаем все ссылки (href) со страницы."""
     response = requests.get(url)
     soup = BeautifulSoup(response.text, "html.parser")
     return [a["href"] for a in soup.find_all("a", href=True)]
 
 
 def download_file(file_url, file_path):
+    """Скачиваем один файл по URL в file_path (если не существует)."""
     if os.path.exists(file_path):
         print(f"🔵 Файл уже существует, пропускаем: {file_path}")
         return
@@ -60,6 +56,7 @@ def download_file(file_url, file_path):
 
 
 def collect_csv_files(remote_url, local_subpath):
+    """Рекурсивно собираем все .csv файлы из удалённой директории."""
     files = []
     items = get_links(remote_url)
     for item in items:
@@ -75,7 +72,7 @@ def collect_csv_files(remote_url, local_subpath):
 
 
 # ------------------------------------------------
-# DownloadFrame (скачивание)
+# Фрейм для скачивания датасетов
 # ------------------------------------------------
 class DownloadFrame(ttk.Frame):
     def __init__(self, master, all_folders):
@@ -89,20 +86,20 @@ class DownloadFrame(ttk.Frame):
         style.configure("TFrame", background="#fafafa")
         style.configure("TLabel", background="#fafafa", foreground="#000", font=("Courier", 12))
         style.configure("TCheckbutton", background="#fafafa", foreground="#000", font=("Courier", 11))
-        style.configure("TButton", 
-                        background="#fafafa", 
-                        foreground="#000", 
+        style.configure("TButton",
+                        background="#fafafa",
+                        foreground="#000",
                         font=("Courier", 12, "bold"))
         style.map("TButton",
-                background=[("active", "#2d2d2d")],
-                foreground=[("active", "#000")])
+                  background=[("active", "#2d2d2d")],
+                  foreground=[("active", "#000")])
         style.configure("Horizontal.TProgressbar",
                         troughcolor="#fafafa",
                         bordercolor="#fafafa",
                         background="#000",
                         lightcolor="#000",
                         darkcolor="#000")
-        style.configure("Vertical.TScrollbar", troughcolor="#fafafa", background="#dfdfdfdfdfdf")
+        style.configure("Vertical.TScrollbar", troughcolor="#fafafa", background="#dfdfdf")
 
         title_label = ttk.Label(self, text="Выберите папки для скачивания:", font=("Courier", 14, "bold"))
         title_label.pack(pady=5)
@@ -116,7 +113,7 @@ class DownloadFrame(ttk.Frame):
         canvas_bg_color = "#fafafa"
         self.canvas = tk.Canvas(checkboxes_frame, bg=canvas_bg_color, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(checkboxes_frame, orient="vertical",
-                                    command=self.canvas.yview, style="Vertical.TScrollbar")
+                                       command=self.canvas.yview, style="Vertical.TScrollbar")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
@@ -144,7 +141,7 @@ class DownloadFrame(ttk.Frame):
             self,
             text="Скачать выбранные",
             command=self.start_download,
-            style="TButton"  # Явно указываем стиль
+            style="TButton"
         )
         download_btn.pack(pady=5)
 
@@ -178,7 +175,7 @@ class DownloadFrame(ttk.Frame):
                                                       "Не найдено ни одного CSV-файла в выбранных папках.",
                                                       parent=self))
             return
-        
+
         def update_progress(i):
             percent = int((i / total_files) * 100)
             self.progress_bar["value"] = i
@@ -203,27 +200,17 @@ class DownloadFrame(ttk.Frame):
         self.after(0, finish_message)
 
 
-# ----------------------------------------------------------
+# ----------------------------------------------------------------------
 # ПАРАЛЛЕЛЬНАЯ ОБРАБОТКА ОТДЕЛЬНОГО ФАЙЛА
-# ----------------------------------------------------------
-def process_file(
-    fpath: str,
-    remove_incomplete: bool,
-    remove_dup: bool
-):
+# ----------------------------------------------------------------------
+def process_file(fpath: str, remove_incomplete: bool, remove_dup: bool):
     """
     Запускается в отдельном процессе (multiprocessing).
     Построчно читает один CSV-файл:
-      - если remove_incomplete=True -> пропускает строки с пустыми полями
-      - если remove_dup=True -> пропускает строки, которые уже встретились в этом файле
-    Логирует каждый пропуск (как раньше).
-    Возвращает кортеж:
-       (rows, incomplete_count, duplicates_count, header)
-    где:
-       rows = список строк (без заголовка)
-       incomplete_count = сколько строк пропущено по причине пустых полей
-       duplicates_count = сколько строк пропущено как дубликаты
-       header = первая строка файла
+      - remove_incomplete: пропускает строки с пустыми полями
+      - remove_dup: пропускает строки, которые уже встретились в файле
+    Логирует каждый пропуск.
+    Возвращает кортеж: (rows, incomplete_count, duplicates_count, header)
     """
     rows = []
     seen = set()
@@ -237,18 +224,15 @@ def process_file(
             row_index = 0
             for row in reader:
                 row_index += 1
-                # Первый ряд - заголовок
                 if row_index == 1:
                     header = row
                     continue
 
-                # Проверяем некорректность
                 if remove_incomplete and any(col.strip() == "" for col in row):
                     logger.info(f"[Некорректная строка] File='{fpath}', Line={row_index}, Data={row}")
                     incomplete_count += 1
                     continue
 
-                # Проверяем дубликат
                 row_tuple = tuple(row)
                 if remove_dup and (row_tuple in seen):
                     logger.info(f"[Дубликат] File='{fpath}', Line={row_index}, Data={row}")
@@ -264,52 +248,53 @@ def process_file(
     return rows, incomplete_count, duplicates_count, header
 
 
-# --------------------------------------------------------------------------
-# ЛОГИКА КОРРЕКЦИИ ОТРИЦАТЕЛЬНЫХ И \pm INF
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# ФУНКЦИЯ КОРРЕКЦИИ ОТРИЦАТЕЛЬНЫХ И \pm INF
+# ----------------------------------------------------------------------
 def fix_negatives_and_infs(df: pd.DataFrame):
     """
     Корректирует отрицательные значения и ±inf в числовых столбцах:
-    - Отрицательные значения заменяются на минимальное положительное значение в столбце
-    - +inf заменяется на максимальное конечное значение в столбце
-    - -inf заменяется на минимальное конечное значение в столбце
+    - Отрицательные -> заменяем на минимальное положительное (если есть)
+    - +inf -> заменяем на max_finite
+    - -inf -> заменяем на min_finite
     """
     for col in df.select_dtypes(include=[np.number]).columns:
         finite_values = df[col].replace([np.inf, -np.inf], np.nan).dropna()
-        
         if finite_values.empty:
-            logger.warning(f"Столбец '{col}' содержит только некорректные значения")
+            logger.warning(f"Столбец '{col}' содержит только некорректные/пустые значения, пропускаем.")
             continue
-        
+
         min_positive = finite_values[finite_values > 0].min() if any(finite_values > 0) else None
         max_finite = finite_values.max()
         min_finite = finite_values.min()
-        
-        # Замена значений
+
         if min_positive:
             df.loc[df[col] < 0, col] = min_positive
         df.loc[df[col] == np.inf, col] = max_finite
         df.loc[df[col] == -np.inf, col] = min_finite
 
 
-# --------------------------------------------------------------------------
-#           NormalizeFrame: параллельная обработка КАЖДОГО файла
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# NormalizeFrame: логика нормализации/логарифма/минмакс
+# ---------------------------------------------------------------------
 class NormalizeFrame(ttk.Frame):
     def __init__(self, master):
         super().__init__(master, padding=10)
-
         self.file_list = []
+
+        # Параметры
         self.var_total_lines = tk.StringVar(value="1000000")
         self.var_label = tk.StringVar(value="")
         self.var_shuffle = tk.BooleanVar(value=False)
         self.var_remove_dup = tk.BooleanVar(value=False)
         self.var_remove_incomplete = tk.BooleanVar(value=False)
-        self.var_fix_inf_and_negatives = tk.BooleanVar(value=False)
-        self.var_min_max_normalize = tk.BooleanVar(value=False)  # Новый чекбокс для Min-Max
+        self.var_fix_inf = tk.BooleanVar(value=False)    # Корректировать инф/отрицательные
+        self.var_do_log = tk.BooleanVar(value=False)     # Логарифм
+        self.var_do_minmax = tk.BooleanVar(value=False)  # Min-Max
 
-        # Чекбоксы для выбора столбцов для логарифмического преобразования
-        self.log_columns_vars = {}
+        # Список чекбоксов для столбцов (при логарифме)
+        self.log_columns_vars = {}  # col_name -> tk.BooleanVar()
+
         self.create_widgets()
 
     def create_widgets(self):
@@ -326,30 +311,67 @@ class NormalizeFrame(ttk.Frame):
         lbl_title = ttk.Label(self, text="Нормализовать (объединить) CSV-файлы (параллельно)", font=("Courier", 14, "bold"))
         lbl_title.pack(pady=5)
 
+        # Кнопки "Добавить" и "Очистить"
         top_frame = ttk.Frame(self)
         top_frame.pack(fill="x")
-
         btn_add = ttk.Button(top_frame, text="Добавить CSV-файлы", command=self.add_files, style="TButton")
         btn_add.pack(side="left", padx=5, pady=5)
-
         btn_clear = ttk.Button(top_frame, text="Очистить список", command=self.clear_file_list, style="TButton")
         btn_clear.pack(side="left", padx=5, pady=5)
 
+        # Listbox со списком выбранных файлов
         self.listbox = tk.Listbox(self, bg="#dfdfdf", fg="#000", selectbackground="#2d2d2d", height=10)
         self.listbox.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Заголовок для выбора столбцов
-        lbl_log_columns = ttk.Label(self, text="Выберите столбцы для логарифмического преобразования:", font=("Courier", 12, "bold"))
-        lbl_log_columns.pack(pady=5)
+        # Фрейм для параметров
+        params_frame = ttk.Frame(self)
+        params_frame.pack(fill="x", pady=5)
 
-        # Фрейм для чекбоксов с прокруткой
-        log_columns_frame = ttk.Frame(self)
-        log_columns_frame.pack(fill="both", expand=True, pady=5)
+        row_idx = 0
+        ttk.Label(params_frame, text="Итоговое кол-во строк:").grid(row=row_idx, column=0, sticky="w", padx=5)
+        entry_total = ttk.Entry(params_frame, textvariable=self.var_total_lines, width=10)
+        entry_total.grid(row=row_idx, column=1, sticky="w", padx=5)
 
-        self.canvas_scroll = tk.Canvas(log_columns_frame, bg="#fafafa", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(log_columns_frame, orient="vertical", command=self.canvas_scroll.yview)
+        row_idx += 1
+        ttk.Label(params_frame, text="Метка (label):").grid(row=row_idx, column=0, sticky="w", padx=5)
+        entry_label = ttk.Entry(params_frame, textvariable=self.var_label, width=10)
+        entry_label.grid(row=row_idx, column=1, sticky="w", padx=5)
+
+        row_idx += 1
+        chk_shuffle = ttk.Checkbutton(params_frame, text="Смешать строки (shuffle)", variable=self.var_shuffle)
+        chk_shuffle.grid(row=row_idx, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        row_idx += 1
+        chk_dup = ttk.Checkbutton(params_frame, text="Удалять дубликаты (между файлами)", variable=self.var_remove_dup)
+        chk_dup.grid(row=row_idx, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        row_idx += 1
+        chk_inc = ttk.Checkbutton(params_frame, text="Удалять некорректные строки (пустые поля)",
+                                  variable=self.var_remove_incomplete)
+        chk_inc.grid(row=row_idx, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        # row_idx += 1
+        # chk_inf = ttk.Checkbutton(params_frame, text="Корректировать отрицательные и ±inf", variable=self.var_fix_inf)
+        # chk_inf.grid(row=row_idx, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        # row_idx += 1
+        # chk_log = ttk.Checkbutton(params_frame, text="Применить логарифм (выбрать столбцы)", variable=self.var_do_log,
+        #                           command=self.on_log_checkbox)
+        # chk_log.grid(row=row_idx, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        # row_idx += 1
+        # chk_mm = ttk.Checkbutton(params_frame, text="Min-Max нормализация", variable=self.var_do_minmax)
+        # chk_mm.grid(row=row_idx, column=0, columnspan=2, sticky="w", padx=5, pady=3)
+
+        # Фрейм с прокруткой для списка столбцов (логарифм)
+        lbl_log_cols = ttk.Label(self, text="Логарифм: выберите числовые столбцы (кроме label):")
+        lbl_log_cols.pack(pady=5)
+        self.log_cols_frame = ttk.Frame(self)
+        self.log_cols_frame.pack(fill="both", expand=True, padx=5, pady=3)
+
+        self.canvas_scroll = tk.Canvas(self.log_cols_frame, bg="#fafafa", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.log_cols_frame, orient="vertical", command=self.canvas_scroll.yview)
         self.canvas_scroll.configure(yscrollcommand=scrollbar.set)
-
         scrollbar.pack(side="right", fill="y")
         self.canvas_scroll.pack(side="left", fill="both", expand=True)
 
@@ -358,52 +380,22 @@ class NormalizeFrame(ttk.Frame):
 
         def on_frame_configure(event):
             self.canvas_scroll.configure(scrollregion=self.canvas_scroll.bbox("all"))
-
         self.checkboxes_frame.bind("<Configure>", on_frame_configure)
 
-        params_frame = ttk.Frame(self)
-        params_frame.pack(fill="x", pady=5)
+        # По умолчанию скрываем список столбцов (пока чекбокс Логарифм не активен)
+        self.log_cols_frame.pack_forget()
 
-        lbl_total_lines = ttk.Label(params_frame, text="Итоговое кол-во строк (после очистки):")
-        lbl_total_lines.grid(row=0, column=0, sticky="w", padx=5)
-        entry_total_lines = ttk.Entry(params_frame, textvariable=self.var_total_lines, width=12)
-        entry_total_lines.grid(row=0, column=1, sticky="w", padx=5)
-
-        lbl_label = ttk.Label(params_frame, text="Метка (label):")
-        lbl_label.grid(row=1, column=0, sticky="w", padx=5)
-        entry_label = ttk.Entry(params_frame, textvariable=self.var_label, width=12)
-        entry_label.grid(row=1, column=1, sticky="w", padx=5)
-
-        chk_shuffle = ttk.Checkbutton(params_frame, text="Смешать строки (Random Shuffle)", variable=self.var_shuffle)
-        chk_shuffle.grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=3)
-
-        chk_dup = ttk.Checkbutton(params_frame, text="Удалять дубликаты (между всеми файлами)", variable=self.var_remove_dup)
-        chk_dup.grid(row=3, column=0, columnspan=2, sticky="w", padx=5, pady=3)
-
-        chk_inc = ttk.Checkbutton(params_frame, text="Удалять некорректные строки (пустые поля)",
-                                  variable=self.var_remove_incomplete)
-        chk_inc.grid(row=4, column=0, columnspan=2, sticky="w", padx=5, pady=3)
-
-        chk_fix_inf_neg = ttk.Checkbutton(params_frame,
-                                          text="Корректировать отрицательные и ±inf",
-                                          variable=self.var_fix_inf_and_negatives)
-        chk_fix_inf_neg.grid(row=5, column=0, columnspan=2, sticky="w", padx=5, pady=3)
-
-        # Новый чекбокс для Min-Max нормализации
-        chk_min_max = ttk.Checkbutton(params_frame,
-                                      text="Применить Min-Max нормализацию",
-                                      variable=self.var_min_max_normalize)
-        chk_min_max.grid(row=6, column=0, columnspan=2, sticky="w", padx=5, pady=3)
-
-        # Прогресс (по кол-ву ФАЙЛОВ)
+        # Прогресс
         self.progress_bar = ttk.Progressbar(self, mode="determinate", length=400, style="Horizontal.TProgressbar")
         self.progress_bar.pack(pady=5)
         self.progress_label = ttk.Label(self, text="Обработка файлов: 0/0")
         self.progress_label.pack(pady=5)
 
+        # Кнопка "Обработать"
         merge_btn = ttk.Button(self, text="Обработать и сохранить", command=self.start_normalize, style="TButton")
         merge_btn.pack(pady=5, anchor="e")
 
+    # Добавление CSV
     def add_files(self):
         file_paths = filedialog.askopenfilenames(
             title="Выберите CSV-файлы",
@@ -414,35 +406,59 @@ class NormalizeFrame(ttk.Frame):
                 if f not in self.file_list:
                     self.file_list.append(f)
                     self.listbox.insert("end", f)
+            # После выбора файлов, возможно, нужно обновить список столбцов для логарифма
             self.show_log_column_selection()
 
-    def show_log_column_selection(self):
-        # Очищаем предыдущие чекбоксы
-        for widget in self.checkboxes_frame.winfo_children():
-            widget.destroy()
-
-        # Загружаем первый файл для получения списка столбцов
-        if self.file_list:
-            try:
-                sample_df = pd.read_csv(self.file_list[0])
-                numeric_columns = sample_df.select_dtypes(include=['number']).columns
-
-                self.log_columns_vars = {}
-                for i, column in enumerate(numeric_columns):
-                    var = tk.BooleanVar()
-                    cb = ttk.Checkbutton(self.checkboxes_frame, text=column, variable=var)
-                    cb.grid(row=i, column=0, sticky="w", padx=5)
-                    self.log_columns_vars[column] = var
-
-            except Exception as e:
-                messagebox.showerror("Ошибка", f"Не удалось прочитать файл для получения столбцов: {e}", parent=self)
-
+    # Очистка списка
     def clear_file_list(self):
         self.file_list.clear()
         self.listbox.delete(0, "end")
+        self.log_columns_vars = {}
         for widget in self.checkboxes_frame.winfo_children():
             widget.destroy()
 
+    # Когда пользователь ставит/убирает галочку "Применить логарифм"
+    def on_log_checkbox(self):
+        if self.var_do_log.get():
+            # Показать фрейм со списком столбцов
+            self.log_cols_frame.pack(fill="both", expand=True, padx=5, pady=3)
+            self.show_log_column_selection()
+        else:
+            # Спрятать фрейм, очистить чекбоксы
+            self.log_cols_frame.pack_forget()
+            self.log_columns_vars = {}
+            for widget in self.checkboxes_frame.winfo_children():
+                widget.destroy()
+
+    # Заполнить список столбцов (только числовые, кроме label)
+    def show_log_column_selection(self):
+        # Очищаем старые чекбоксы
+        for widget in self.checkboxes_frame.winfo_children():
+            widget.destroy()
+        self.log_columns_vars = {}
+
+        # Если нет файлов -> ничего не делаем
+        if not self.file_list or not self.var_do_log.get():
+            return
+
+        # Считываем ПЕРВЫЙ файл (для примера) чтобы узнать столбцы
+        try:
+            sample_df = pd.read_csv(self.file_list[0])
+            numeric_cols = sample_df.select_dtypes(include=[np.number]).columns
+            # Исключаем label
+            if "label" in numeric_cols:
+                numeric_cols = numeric_cols.drop("label")
+
+            for col_name in numeric_cols:
+                var = tk.BooleanVar()
+                cb = ttk.Checkbutton(self.checkboxes_frame, text=col_name, variable=var)
+                cb.pack(anchor="w")
+                self.log_columns_vars[col_name] = var
+
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось прочитать файл: {e}", parent=self)
+
+    # Начало нормализации
     def start_normalize(self):
         if not self.file_list:
             messagebox.showerror("Ошибка", "Сначала выберите хотя бы один CSV-файл!", parent=self)
@@ -465,30 +481,22 @@ class NormalizeFrame(ttk.Frame):
             messagebox.showerror("Ошибка", "Некорректное число строк!", parent=self)
             return
 
-        # Запускаем в отдельном потоке, чтобы GUI не завис
         thread = Thread(target=self.normalize_thread, args=(out_path, total_needed), daemon=True)
         thread.start()
+
     def normalize_thread(self, out_path, total_needed):
-        """
-        Основной метод: ПАРАЛЛЕЛЬНО обрабатывает каждый файл (process_file),
-        потом сливает результаты. Если do_remove_dup=True, удаляем дубликаты
-        и МЕЖДУ файлами.
-        """
         do_shuffle = self.var_shuffle.get()
         do_remove_dup = self.var_remove_dup.get()
         do_remove_incomplete = self.var_remove_incomplete.get()
-        do_fix_inf_neg = self.var_fix_inf_and_negatives.get()
-        do_min_max_normalize = self.var_min_max_normalize.get()  # Новая переменная для Min-Max
+        do_fix_inf = self.var_fix_inf.get()
+        do_log = self.var_do_log.get()
+        do_minmax = self.var_do_minmax.get()
         label_value = self.var_label.get().strip()
-
-        # Получаем выбранные поля для логарифмического преобразования
-        log_columns = [col for col, var in self.log_columns_vars.items() if var.get()]
 
         n_files = len(self.file_list)
         self.set_progress(0, n_files)
 
-        # Пул процессов для process_file
-        results = []
+        # Параллельно читаем все файлы
         try:
             with multiprocessing.Pool() as pool:
                 async_result = pool.starmap_async(
@@ -496,33 +504,28 @@ class NormalizeFrame(ttk.Frame):
                     [(fpath, do_remove_incomplete, do_remove_dup) for fpath in self.file_list]
                 )
                 final_list = async_result.get()
-
-            # Все файлы готовы:
-            self.set_progress(n_files, n_files)
-
-            results = final_list
         except Exception as e:
             msg = f"Ошибка при параллельной обработке: {e}"
             logger.error(msg)
             self.after(0, lambda: messagebox.showerror("Ошибка", msg, parent=self))
             return
 
-        # Теперь объединим результаты
+        self.set_progress(n_files, n_files)
+
+        # Собираем все строки
         all_rows = []
         total_incomplete = 0
         total_duplicates_local = 0
         headers = []
-        for i, (rows, inc_count, dup_count, header) in enumerate(results, start=1):
+        for (rows, inc_count, dup_count, header) in final_list:
             if header:
                 headers.append(header)
             total_incomplete += inc_count
             total_duplicates_local += dup_count
             all_rows.extend(rows)
 
-        # Выберем "первый" заголовок как основной
         main_header = headers[0] if headers else None
-
-        # Если включено remove_dup => ещё убираем дубликаты МЕЖДУ файлами
+        # Дубликаты между файлами
         total_duplicates_global = 0
         if do_remove_dup:
             global_seen = set()
@@ -536,15 +539,12 @@ class NormalizeFrame(ttk.Frame):
                 global_seen.add(rt)
             all_rows = unique_rows
 
-        # Если строк больше, чем требуется
         if len(all_rows) > total_needed:
             all_rows = random.sample(all_rows, total_needed)
 
-        # Перемешать, если нужно
         if do_shuffle:
             random.shuffle(all_rows)
 
-        # Если заголовка нет, пытаемся создать
         if not main_header and all_rows:
             col_count = len(all_rows[0])
             main_header = [f"col{i+1}" for i in range(col_count)]
@@ -552,51 +552,47 @@ class NormalizeFrame(ttk.Frame):
             main_header = []
 
         if not all_rows:
-            msg = "В итоге не осталось ни одной строки (все удалены?)."
+            msg = "В итоге не осталось ни одной строки."
             self.after(0, lambda: messagebox.showinfo("Результат", msg, parent=self))
             return
 
-        # Собираем DataFrame
         df = pd.DataFrame(all_rows, columns=main_header)
 
-        # Если задана метка (label)
+        # label, если указано
         if label_value:
             df["label"] = label_value
 
-        # --- ВАЖНО: Корректируем минусы и inf, если включен чекбокс ---
-        if do_fix_inf_neg:
+        # 1) Коррекция ±inf, отрицательных
+        if do_fix_inf:
             try:
                 fix_negatives_and_infs(df)
-            except ValueError as e:
-                msg = f"Ошибка коррекции значений: {e}"
-                logger.error(msg)
-                self.after(0, lambda: messagebox.showerror("Ошибка", msg, parent=self))
-                return
+            except Exception as e:
+                logger.error(f"Ошибка fix_negatives_and_infs: {e}")
 
-        # Применяем логарифмическое преобразование к выбранным полям
-        for column in log_columns:
-            if column in df.columns:
-                try:
-                    # Преобразуем столбец в числовой тип, игнорируя ошибки
-                    df[column] = pd.to_numeric(df[column], errors="coerce")
-                    # Применяем логарифмическое преобразование
-                    df[column] = np.log1p(df[column])
-                except Exception as e:
-                    msg = f"Ошибка при логарифмическом преобразовании столбца '{column}': {e}"
-                    logger.error(msg)
-                    self.after(0, lambda: messagebox.showerror("Ошибка", msg, parent=self))
-                    return
+        # 2) Логарифмируем выбранные столбцы
+        if do_log:
+            chosen_cols = [col for col, var in self.log_columns_vars.items() if var.get()]
+            for c in chosen_cols:
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c], errors="coerce")
+                    # log1p -> log(1 + x), чтобы избежать log(0)
+                    try:
+                        df[c] = np.log1p(df[c])
+                    except Exception as e:
+                        logger.error(f"Ошибка логарифма для столбца '{c}': {e}")
 
-        # Выполняем Min-Max нормализацию, если включен чекбокс
-        if do_min_max_normalize:
-            numeric_columns = df.select_dtypes(include=['number']).columns
-            for column in numeric_columns:
-                min_val = df[column].min()
-                max_val = df[column].max()
-                if max_val - min_val > 0:
-                    df[column] = (df[column] - min_val) / (max_val - min_val)
+        # 3) Min-Max нормализация (если включено)
+        if do_minmax:
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            for c in numeric_cols:
+                if c == "label":
+                    continue
+                c_min = df[c].min()
+                c_max = df[c].max()
+                if c_max - c_min != 0:
+                    df[c] = (df[c] - c_min) / (c_max - c_min)
 
-        # Пытаемся сохранить
+        # Сохраняем
         try:
             df.to_csv(out_path, index=False)
         except Exception as e:
@@ -606,25 +602,45 @@ class NormalizeFrame(ttk.Frame):
             return
 
         final_count = len(df)
-        file_name = f"logs/{os.path.basename(out_path).replace('.csv', '')}.log"
-        msg = (
+
+        # Выводим окно с min/max всех числовых столбцов
+        def show_min_max_window():
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            msg_list = []
+            for c in numeric_cols:
+                col_min = df[c].min()
+                col_max = df[c].max()
+                msg_list.append(f"{c}: min={col_min}, max={col_max}")
+            window = tk.Toplevel(self)
+            window.title("Min/Max после нормализации")
+            tk.Label(window, text="Min/Max для числовых столбцов:", font=("Courier", 12, "bold")).pack(pady=5)
+            for line in msg_list:
+                tk.Label(window, text=line, font=("Courier", 11)).pack(anchor="w", padx=10)
+
+        # Формируем сообщение (лог)
+        info_msg = (
             f"Обработка завершена!\n\n"
             f"Файл сохранён: {out_path}\n"
-            f"Всего файлов: {len(self.file_list)}\n\n"
-            f"Некорректных строк (по файлам): {total_incomplete}\n"
-            f"Дубликатов (внутри файлов): {total_duplicates_local}\n"
-            f"Дубликатов (между файлами): {total_duplicates_global}\n"
-            f"Итоговое кол-во строк: {final_count} (с учётом лимита = {total_needed})\n"
-            f"Коррекция отрицательных/inf: {'Да' if do_fix_inf_neg else 'Нет'}\n"
-            f"Логарифмическое преобразование: {', '.join(log_columns) if log_columns else 'Нет'}\n"
-            f"Min-Max нормализация: {'Да' if do_min_max_normalize else 'Нет'}"
+            f"Всего файлов: {len(self.file_list)}\n"
+            f"Некорректных строк: {total_incomplete}\n"
+            f"Дубликатов (внутри): {total_duplicates_local}\n"
+            f"Дубликатов (между): {total_duplicates_global}\n"
+            f"Итоговое кол-во строк: {final_count}\n"
+            f"Коррекция inf/neg: {'Да' if do_fix_inf else 'Нет'}\n"
+            f"Логарифм: {', '.join([c for c,v in self.log_columns_vars.items() if v.get()]) if do_log else 'Нет'}\n"
+            f"Min-Max: {'Да' if do_minmax else 'Нет'}\n"
         )
-        with open(file_name, 'w', encoding="utf-8") as file:
-            file.write(msg)
 
-        self.after(0, lambda: messagebox.showinfo("Результат", msg, parent=self))
+        # Пишем в лог-файл
+        file_log_name = os.path.basename(out_path).replace(".csv", "") + ".log"
+        file_log_path = os.path.join(LOG_DIR, file_log_name)
+        with open(file_log_path, "w", encoding="utf-8") as logf:
+            logf.write(info_msg)
 
-    # ----------------- Прогресс по КОЛ-ВУ ФАЙЛОВ -----------------
+        # Показываем итоги
+        self.after(0, lambda: messagebox.showinfo("Результат", info_msg, parent=self))
+        self.after(0, show_min_max_window)
+
     def set_progress(self, value, maximum):
         self.after(0, lambda: self._set_progress(value, maximum))
 
@@ -634,34 +650,33 @@ class NormalizeFrame(ttk.Frame):
         self.progress_label.config(text=f"Обработка файлов: {value}/{maximum}")
 
 
+# --------------------------------------------------------------------
+# Функция для вкладки "Анализ": выводит min/max выбранных столбцов
+# --------------------------------------------------------------------
 def find_min_max_for_selected_columns(df: pd.DataFrame):
-    """
-    Функция находит минимальное и максимальное значения для всех числовых колонок в DataFrame.
-
-    :param df: DataFrame с данными
-    :return: DataFrame с колонками: "Column", "Min", "Max"
-    """
-    numeric_columns = df.select_dtypes(include=['number']).columns  # Берем только числовые колонки
+    numeric_columns = df.select_dtypes(include=['number']).columns
     results = []
-
     for column in numeric_columns:
         min_value = df[column].min()
         max_value = df[column].max()
         results.append({"Column": column, "Min": min_value, "Max": max_value})
-
     return pd.DataFrame(results)
 
+
+# --------------------------------------------------------------------
+# AnalyzeFrame — вкладка анализа (графики)
+# --------------------------------------------------------------------
 class AnalyzeFrame(ttk.Frame):
     def __init__(self, master):
         super().__init__(master, padding=10)
         self.file_path = None
         self.df = None
         self.column_vars = {}
-        self.canvas = None  # Для встроенного графика
-        self.select_all_button = None  # Кнопка "Выбрать все"
-        self.plot_button = None  # Кнопка "Построить график"
-        self.min_max_button = None  # Кнопка "Найти минимум/максимум"
-        self.save_graph_button = None  # Кнопка "Сохранить график"
+        self.canvas = None
+        self.select_all_button = None
+        self.plot_button = None
+        self.min_max_button = None
+        self.save_graph_button = None
         self.create_widgets()
 
     def create_widgets(self):
@@ -687,26 +702,22 @@ class AnalyzeFrame(ttk.Frame):
         self.progress_label = ttk.Label(self, text="Ожидание...")
         self.progress_label.pack(pady=5)
 
-        # Центральный контейнер для чекбоксов с прокруткой
         center_frame = ttk.Frame(self)
         center_frame.pack(fill="both", expand=True, pady=5)
 
         self.canvas_scroll = tk.Canvas(center_frame, bg="#fafafa", highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(center_frame, orient="vertical", command=self.canvas_scroll.yview)
         self.canvas_scroll.configure(yscrollcommand=self.scrollbar.set)
-
         self.scrollbar.pack(side="right", fill="y")
         self.canvas_scroll.pack(side="left", fill="both", expand=True)
 
         self.checkboxes_frame = ttk.Frame(self.canvas_scroll, style="TFrame")
-        self.canvas_window = self.canvas_scroll.create_window((0, 0), window=self.checkboxes_frame, anchor="center")
+        self.canvas_window = self.canvas_scroll.create_window((0, 0), window=self.checkboxes_frame, anchor="nw")
 
         def on_frame_configure(event):
             self.canvas_scroll.configure(scrollregion=self.canvas_scroll.bbox("all"))
-
         self.checkboxes_frame.bind("<Configure>", on_frame_configure)
 
-        # Место для графика
         self.graph_frame = ttk.Frame(self)
         self.graph_frame.pack(fill="both", expand=True, pady=5)
 
@@ -722,20 +733,17 @@ class AnalyzeFrame(ttk.Frame):
 
     def load_columns(self):
         try:
-            # Чтение файла и получение числовых колонок
             self.df = pd.read_csv(self.file_path)
             numeric_columns = self.df.select_dtypes(include=['number']).columns
 
-            # Очистка предыдущих чекбоксов
             for widget in self.checkboxes_frame.winfo_children():
                 widget.destroy()
 
-            # Удаление старой кнопки "Выбрать все", если она существует
             if self.select_all_button:
                 self.select_all_button.destroy()
 
-            # Разделение чекбоксов на несколько столбцов
-            num_columns = 3  # Количество столбцов
+            # Разделим все чекбоксы на несколько колонок
+            num_columns = 3
             column_frames = []
             for i in range(num_columns):
                 frame = ttk.Frame(self.checkboxes_frame)
@@ -743,13 +751,16 @@ class AnalyzeFrame(ttk.Frame):
                 column_frames.append(frame)
 
             self.column_vars = {}
-            for i, column in enumerate(numeric_columns):
+            idx = 0
+            for column in numeric_columns:
                 var = tk.BooleanVar()
-                cb = ttk.Checkbutton(column_frames[i % num_columns], text=column, variable=var, command=self.update_buttons_state)
+                cb = ttk.Checkbutton(column_frames[idx % num_columns], text=column, variable=var,
+                                     command=self.update_buttons_state)
                 cb.pack(anchor="w")
                 self.column_vars[column] = var
+                idx += 1
 
-            # Добавление кнопки "Выбрать все" внизу списка
+            # Кнопка "Выбрать все"
             self.select_all_button = ttk.Button(
                 self.checkboxes_frame,
                 text="Выбрать все",
@@ -758,20 +769,16 @@ class AnalyzeFrame(ttk.Frame):
             )
             self.select_all_button.grid(row=1, column=0, columnspan=num_columns, pady=5)
 
-            # Создание кнопок "Построить график" и "Найти минимум/максимум"
             self.create_action_buttons()
-
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось загрузить файл: {e}", parent=self)
 
     def create_action_buttons(self):
-        # Удаление старых кнопок, если они существуют
         if self.plot_button:
             self.plot_button.destroy()
         if self.min_max_button:
             self.min_max_button.destroy()
 
-        # Создание новых кнопок
         self.plot_button = ttk.Button(
             self,
             text="Построить график",
@@ -791,7 +798,6 @@ class AnalyzeFrame(ttk.Frame):
         self.min_max_button.pack(pady=5)
 
     def update_buttons_state(self):
-        # Проверка состояния чекбоксов
         selected_columns = [col for col, var in self.column_vars.items() if var.get()]
         if selected_columns:
             self.plot_button.config(state="normal")
@@ -801,7 +807,6 @@ class AnalyzeFrame(ttk.Frame):
             self.min_max_button.config(state="disabled")
 
     def select_all_columns(self):
-        # Переключение состояния всех чекбоксов
         new_state = not all(var.get() for var in self.column_vars.values())
         for var in self.column_vars.values():
             var.set(new_state)
@@ -811,40 +816,33 @@ class AnalyzeFrame(ttk.Frame):
         if self.df is None:
             messagebox.showerror("Ошибка", "Сначала выберите CSV-файл!", parent=self)
             return
-
-        # Получение выбранных колонок
         selected_columns = [col for col, var in self.column_vars.items() if var.get()]
         if not selected_columns:
             messagebox.showerror("Ошибка", "Выберите хотя бы одну колонку для анализа!", parent=self)
             return
-
         if len(selected_columns) > 5:
             messagebox.showerror("Ошибка", "Можно выбрать не более 5 колонок для построения графика!", parent=self)
             return
 
-        # Очистка предыдущего графика
         if hasattr(self, "canvas") and self.canvas:
             self.canvas.get_tk_widget().destroy()
 
-        # Построение графиков
         fig, ax = plt.subplots(figsize=(8, 4))
         for column in selected_columns:
             x_values = range(1, len(self.df) + 1)
             y_values = self.df[column].tolist()
             ax.plot(x_values, y_values, marker="o", linestyle="-", markersize=2, label=column)
 
-        ax.set_xlabel("Номер строки (Row Count)")
+        ax.set_xlabel("Номер строки")
         ax.set_ylabel("Значения")
-        ax.set_title("График значений выбранных колонок")
+        ax.set_title("График значений выбранных столбцов")
         ax.legend()
         ax.grid(True)
 
-        # Встраивание графика в интерфейс
         self.canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
-        # Добавление кнопки "Сохранить график"
         if not self.save_graph_button:
             self.save_graph_button = ttk.Button(
                 self,
@@ -859,28 +857,19 @@ class AnalyzeFrame(ttk.Frame):
         if not selected_columns:
             messagebox.showerror("Ошибка", "Выберите хотя бы одну колонку!", parent=self)
             return
-
         result_df = find_min_max_for_selected_columns(self.df[selected_columns])
-
-        # Вывод результата в консоль
-        print(result_df)
-
-        # Сохранение результатов в лог
-        log_dir = "logs/app/min_max/"
-        os.makedirs(log_dir, exist_ok=True)
-        with open(f"{log_dir}/min_max_results.log", "w", encoding="utf-8") as f:
-            f.write(result_df.to_string())
-
-        # Сохранение результатов в CSV
-        # result_df.to_csv("min_max_results.csv", index=False)
-
-        messagebox.showinfo("Готово!", "Минимум и максимум найдены! Результаты сохранены.", parent=self)
+        # Покажем окно с результатами
+        window = tk.Toplevel(self)
+        window.title("Min/Max для выбранных столбцов")
+        tk.Label(window, text="Результат:", font=("Courier", 12, "bold")).pack(pady=5)
+        for idx, row in result_df.iterrows():
+            line = f"{row['Column']}: min={row['Min']}, max={row['Max']}"
+            tk.Label(window, text=line, font=("Courier", 11)).pack(anchor="w", padx=10)
 
     def save_graph(self):
         if not self.canvas:
             messagebox.showerror("Ошибка", "График ещё не построен!", parent=self)
             return
-
         file_path = filedialog.asksaveasfilename(
             title="Сохранить график",
             defaultextension=".png",
@@ -889,41 +878,36 @@ class AnalyzeFrame(ttk.Frame):
         if file_path:
             self.canvas.figure.savefig(file_path)
             messagebox.showinfo("Готово!", f"График сохранён: {file_path}", parent=self)
-# --------------------------------------------------------------------------
-#                         Главное окно
-# --------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------
+# Главное окно приложения
+# ---------------------------------------------------------------------
 class MainApp(ThemedTk):
     def __init__(self):
         super().__init__()
-        
-        # Устанавливаем современную тему
-        self.set_theme("arc")  # arc - одна из доступных тем
-        
+        self.set_theme("arc")
         self.title("Приложение: Скачивание и Нормализация CSV (Parallel)")
-        self.geometry("800x600")
-        self.configure(background="#fafafa")  # Фон окна тоже делаем черным
-        
-        # Настройка стилей
+        self.geometry("900x700")
+        self.configure(background="#fafafa")
+
         style = ttk.Style()
-        style.configure('TFrame', background='#fafafa')  # Фон фреймов
-        style.configure('TLabel', background='#fafafa', foreground='#000', font=('Segoe UI', 10))  # Цвет текста меток
-        style.configure('TButton', background='#fafafa', foreground='#000', font=('Segoe UI', 10, 'bold'))  # Кнопки
+        style.configure('TFrame', background='#fafafa')
+        style.configure('TLabel', background='#fafafa', foreground='#000', font=('Segoe UI', 10))
+        style.configure('TButton', background='#fafafa', foreground='#000', font=('Segoe UI', 10, 'bold'))
         style.map('TButton',
-                  background=[('active', '#fafafa')],  # Цвет при наведении
-                  foreground=[('active', '#000')])  # Цвет текста при наведении
-        style.configure('TCheckbutton', background='#fafafa', foreground='#000', font=('Segoe UI', 10))  # Чекбоксы
-        style.configure('Horizontal.TProgressbar', troughcolor='#fafafa', background='#000', thickness=25)  # Прогресс-бар
-        style.configure('Vertical.TScrollbar', troughcolor='#fafafa', background='#000')  # Скроллбар
-        
-        # Получаем список папок (для скачивания)
+                  background=[('active', '#fafafa')],
+                  foreground=[('active', '#000')])
+        style.configure('TCheckbutton', background='#fafafa', foreground='#000', font=('Segoe UI', 10))
+        style.configure('Horizontal.TProgressbar', troughcolor='#fafafa', background='#000', thickness=25)
+        style.configure('Vertical.TScrollbar', troughcolor='#fafafa', background='#000')
+
         all_folders = [folder for folder in get_links(BASE_URL) if folder.endswith('/')]
 
-        # Создаем фреймы для разных экранов
         self.download_frame = DownloadFrame(self, all_folders)
         self.normalize_frame = NormalizeFrame(self)
         self.analyze_frame = AnalyzeFrame(self)
 
-        # Создаем меню
         menubar = tk.Menu(self, background="#fafafa", foreground="#000", font=('Segoe UI', 10))
         self.config(menu=menubar)
 
@@ -931,13 +915,10 @@ class MainApp(ThemedTk):
         menu_functions.add_command(label="Скачать датасет", command=self.show_download)
         menu_functions.add_command(label="Нормализовать датасет", command=self.show_normalize)
         menu_functions.add_command(label="Анализировать датасет", command=self.show_analyze)
+        menu_functions.add_separator()
         menu_functions.add_command(label="Выход", command=self.quit)
         menubar.add_cascade(label="Меню", menu=menu_functions)
 
-        # menu_file = tk.Menu(menubar, tearoff=False, background="#fafafa", foreground="#000", font=('Segoe UI', 10))
-        # menubar.add_cascade(label="Файл", menu=menu_file)
-
-        # Отображаем начальный экран
         self.show_download()
 
     def show_download(self):
@@ -954,6 +935,7 @@ class MainApp(ThemedTk):
         self.download_frame.pack_forget()
         self.normalize_frame.pack_forget()
         self.analyze_frame.pack(fill="both", expand=True)
+
 
 if __name__ == "__main__":
     app = MainApp()
